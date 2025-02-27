@@ -1,0 +1,129 @@
+/* ✅ General Checkout Page Styling */
+.checkout-container {
+  padding: 40px 20px;
+  min-height: 100vh;
+  background: linear-gradient(to right, #f8f9fa, #e9ecef);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ✅ Checkout Form */
+.checkout-form {
+  background: white;
+  padding: 25px;
+  border-radius: 12px;
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1);
+  max-width: 500px;
+  width: 90%;
+  text-align: center;
+  transition: 0.3s ease-in-out;
+}
+
+.checkout-form:hover {
+  box-shadow: 0 8px 15px rgba(0, 0, 0, 0.15);
+}
+
+/* ✅ Form Title */
+.checkout-form h2 {
+  margin-bottom: 20px;
+  font-size: 22px;
+  color: #333;
+  font-weight: bold;
+}
+
+/* ✅ Payment Amount */
+.total-amount {
+  font-size: 18px;
+  font-weight: bold;
+  color: #444;
+  margin-bottom: 15px;
+}
+
+/* ✅ Payment Input Fields */
+.checkout-form input,
+.checkout-form select {
+  width: 100%;
+  padding: 12px;
+  margin: 10px 0;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  font-size: 16px;
+}
+
+/* ✅ Stripe Card Input */
+.card-element {
+  border: 1px solid #ccc;
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 15px;
+  background: #f8f9fa;
+}
+
+/* ✅ Error & Success Messages */
+.error {
+  color: red;
+  font-size: 14px;
+  margin-top: 10px;
+}
+
+.success {
+  color: green;
+  font-size: 16px;
+  font-weight: bold;
+  margin-top: 15px;
+}
+
+/* ✅ Payment Button */
+.checkout-btn {
+  width: 100%;
+  padding: 14px;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background 0.3s ease-in-out;
+}
+
+.checkout-btn:hover {
+  background-color: #0056b3;
+}
+
+/* ✅ Order Summary */
+.order-summary {
+  margin-top: 20px;
+  background: #fff;
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1);
+  width: 90%;
+  max-width: 500px;
+}
+
+.order-summary h3 {
+  margin-bottom: 10px;
+  color: #333;
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.order-summary p {
+  font-size: 16px;
+  margin: 5px 0;
+  color: #444;
+}
+
+/* ✅ Responsive Design */
+@media (max-width: 600px) {
+  .checkout-form {
+    width: 100%;
+  }
+
+  .order-summary {
+    width: 100%;
+  }
+}

@@ -1,0 +1,129 @@
+/* Full-page container */
+.auth-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background: linear-gradient(to right, #e3f2fd, #f3e5f5);
+  padding: 20px;
+}
+
+/* Card */
+.auth-card {
+  background: white;
+  box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.1);
+  border-radius: 12px;
+  padding: 30px;
+  max-width: 400px;
+  width: 100%;
+  text-align: center;
+  transition: transform 0.3s ease;
+}
+
+.auth-card:hover {
+  transform: scale(1.02);
+}
+
+/* Title */
+.auth-title {
+  font-size: 24px;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 5px;
+}
+
+.auth-subtitle {
+  font-size: 14px;
+  color: #777;
+  margin-bottom: 20px;
+}
+
+/* Form */
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+/* Input Group */
+.input-group {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+/* Input Fields */
+.input-field {
+  width: 100%;
+  padding: 12px 12px 12px 40px; /* Space for right-side icon */
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  font-size: 14px;
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+.input-field:focus {
+  border-color: #6200ea;
+  outline: none;
+  box-shadow: 0px 0px 8px rgba(98, 0, 234, 0.2);
+}
+
+/* Icons Aligned to Right */
+.input-icon {
+  position: absolute;
+  right: 12px;
+  color: #777;
+  font-size: 16px;
+}
+
+/* Button */
+.auth-button {
+  width: 100%;
+  padding: 12px;
+  background: linear-gradient(to right, #6200ea, #9c27b0);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: background 0.3s ease, transform 0.2s;
+}
+
+.auth-button:hover {
+  background: linear-gradient(to right, #7b1fa2, #ab47bc);
+  transform: scale(1.02);
+}
+
+/* Signup/Login Link */
+.auth-link {
+  margin-top: 15px;
+  font-size: 14px;
+  color: #777;
+}
+
+.link-text {
+  color: #6200ea;
+  font-weight: bold;
+  cursor: pointer;
+  transition: color 0.3s;
+}
+
+.link-text:hover {
+  color: #9c27b0;
+}
+
+/* Mobile Responsive */
+@media (max-width: 480px) {
+  .auth-card {
+    padding: 25px;
+  }
+
+  .input-field {
+    padding-left: 35px;
+  }
+
+  .input-icon {
+    font-size: 14px;
+  }
+}

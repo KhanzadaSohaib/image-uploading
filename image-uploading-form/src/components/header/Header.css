@@ -1,0 +1,67 @@
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: #333;
+  padding: 10px 20px;
+}
+
+.nav-links {
+  display: flex;
+  gap: 15px;
+}
+
+.nav-links button {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 8px 12px;
+  transition: 0.3s;
+}
+
+.nav-links button:hover,
+.cart-button:hover {
+  background-color: #555;
+  border-radius: 5px;
+}
+
+.nav-links .active {
+  background-color: #007bff;
+  border-radius: 5px;
+}
+
+.header-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.cart-button {
+  background-color: #007bff;
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.cart-button:hover {
+  background-color: #0056b3;
+}
+
+.logout-button {
+  background: red;
+  color: white;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 8px 15px;
+  border-radius: 5px;
+  transition: 0.3s;
+}
+
+.logout-button:hover {
+  background-color: darkred;
+}

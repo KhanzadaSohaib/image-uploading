@@ -1,0 +1,111 @@
+/* Dashboard Container */
+.dashboard-container {
+  max-width: 100%;
+  margin: auto;
+  padding: 20px;
+  text-align: center;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(to right, #e3f2fd, #f3e5f5); /* Light Mode */
+}
+
+/* Dark Theme */
+.dark-theme .dashboard-container {
+  background: linear-gradient(to right, #1e1e1e, #2c2c2c); /* Dark Mode */
+}
+
+/* Dashboard Title */
+.dashboard-title {
+  font-size: 26px;
+  font-weight: bold;
+  margin-bottom: 20px;
+  color: #333;
+}
+
+/* User Cards Grid Layout */
+.user-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); /* Prevents full-width stretching */
+  gap: 20px;
+  width: 100%;
+  max-width: 1000px;
+  justify-content: center;
+}
+
+
+/* User Card */
+.user-card {
+  background: white;
+  padding: 20px;
+  border-radius: 10px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  text-align: center;
+  transition: transform 0.3s ease, box-shadow 0.3s;
+}
+
+.user-card:hover {
+  transform: scale(1.05);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.15);
+}
+
+/* Dark Theme for User Card */
+.dark-theme .user-card {
+  background: #2c2c2c;
+  color: white;
+  box-shadow: 0 4px 10px rgba(255, 255, 255, 0.1);
+}
+
+/* User Avatar */
+.user-card img {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  object-fit: cover;
+  margin-bottom: 10px;
+}
+
+/* User Name */
+.user-name {
+  font-size: 18px;
+  font-weight: bold;
+  margin-bottom: 5px;
+  color: #333;
+}
+
+/* Dark Theme User Name */
+.dark-theme .user-name {
+  color: white;
+}
+
+/* User Email */
+.user-email {
+  font-size: 14px;
+  color: #666;
+  margin-bottom: 10px;
+}
+
+/* Delete Button */
+.delete-button {
+  background-color: #e74c3c;
+  color: white;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.3s, transform 0.2s;
+}
+
+.delete-button:hover {
+  background-color: #c0392b;
+  transform: scale(1.05);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .user-cards {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  }
+}
