@@ -23,10 +23,10 @@ const CheckoutForm = () => {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
 
-  // Calculate total amount in dollars ($)
-  const totalAmount = cart
-    .reduce((total, item) => total + item.price * item.quantity, 0)
-    .toFixed(2);
+  // ✅ Calculate total amount in cents (Stripe expects cents, not dollars)
+  const totalAmount = Math.round(
+    cart.reduce((total, item) => total + item.price * item.quantity, 0) * 100
+  );
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -36,43 +36,52 @@ const CheckoutForm = () => {
     if (!stripe || !elements) return;
 
     const cardElement = elements.getElement(CardElement);
-
     if (!cardElement) {
       setError("Payment method not available.");
       setLoading(false);
       return;
     }
 
-    const { error, paymentMethod } = await stripe.createPaymentMethod({
-      type: "card",
-      card: cardElement,
-    });
+    try {
+      // ✅ Step 1: Create Payment Method
+      const { error, paymentMethod } = await stripe.createPaymentMethod({
+        type: "card",
+        card: cardElement,
+      });
 
-    if (error) {
-      setError(error.message);
-      setLoading(false);
-      return;
-    }
+      if (error) {
+        setError(error.message);
+        setLoading(false);
+        return;
+      }
 
-    console.log("Total Amount (Displayed):", totalAmount);
-    console.log("Amount Sent to Stripe (Dollars):", totalAmount);
-
-    const response = await fetch("http://localhost:8005/api/payment", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+      console.log("🚀 Sending Payment:", {
+        amount: totalAmount,
         paymentMethodId: paymentMethod.id,
-        amount: totalAmount, // ✅ Sending in dollars now
-      }),
-    });
+      });
 
-    const data = await response.json();
+      // ✅ Step 2: Send Payment Intent Request to Backend
+      const response = await fetch("http://localhost:8005/api/payment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amount: totalAmount, // ✅ Send amount in cents
+          paymentMethodId: paymentMethod.id, // ✅ Correct field name
+        }),
+      });
 
-    if (data.success) {
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Payment failed");
+      }
+
+      console.log("✅ Payment Successful:", data);
       setSuccess(true);
       setTimeout(() => navigate("/success"), 2000);
-    } else {
-      setError(data.message || "Payment failed.");
+    } catch (err) {
+      console.error("❌ Payment Error:", err.message);
+      setError(err.message);
     }
 
     setLoading(false);
@@ -83,7 +92,7 @@ const CheckoutForm = () => {
       <form onSubmit={handleSubmit} className="checkout-form">
         <h2>💳 Secure Payment</h2>
         <p className="amount">
-          Total: <strong>${totalAmount}</strong>
+          Total: <strong>${(totalAmount / 100).toFixed(2)}</strong>
         </p>
         <CardElement className="card-element" />
         {error && <p className="error-message">❌ {error}</p>}

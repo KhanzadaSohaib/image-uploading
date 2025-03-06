@@ -1,11 +1,23 @@
+require("dotenv").config(); // ✅ Load .env before anything else
+
 const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
 const http = require("http");
 const { Server } = require("socket.io");
 const jwt = require("jsonwebtoken");
+
+// ✅ Debugging: Print Stripe Key to verify it's loading
+console.log("Stripe Key:", process.env.STRIPE_SECRET_KEY);
+
+if (!process.env.STRIPE_SECRET_KEY) {
+  throw new Error("❌ STRIPE_SECRET_KEY is not defined in .env file!");
+}
+
+// ✅ Initialize Stripe AFTER loading .env
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
+
 const authRoutes = require("./routes/authRoutes");
-require("dotenv").config();
 
 const app = express();
 const server = http.createServer(app);
@@ -32,6 +44,29 @@ mongoose
 
 app.use("/api", authRoutes);
 
+// ✅ Stripe Payment Endpoint
+app.post("/api/payment", async (req, res) => {
+  try {
+    const { amount, paymentMethodId } = req.body;
+
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount,
+      currency: "usd",
+      payment_method: paymentMethodId,
+      confirm: true,
+      automatic_payment_methods: {
+        enabled: true,
+        allow_redirects: "never",
+      },
+    });
+
+    res.json({ success: true, clientSecret: paymentIntent.client_secret });
+  } catch (error) {
+    console.error("Payment Error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ✅ SOCKET.IO Setup
 const io = new Server(server, {
   cors: {
@@ -42,7 +77,7 @@ const io = new Server(server, {
 });
 
 // ✅ Store user connections properly
-const users = new Map(); // { userId: { username, sockets: Set(socketId) } }
+const users = new Map();
 
 // ✅ Socket.IO Authentication Middleware
 io.use((socket, next) => {

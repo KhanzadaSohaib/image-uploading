@@ -1,4 +1,4 @@
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, useLocation } from "react-router-dom";
 import Signup from "./components/Signup";
 import Login from "./components/Login";
 import Dashboard from "./components/Dashboard";
@@ -13,9 +13,16 @@ import Cancel from "./components/pages/Cancel";
 import Chat from "./components/chat/Chat"; // ✅ Chat Component
 
 function App() {
+  const location = useLocation();
+
+  // Define pages where the header should be hidden
+  const hideHeaderRoutes = ["/", "/signup"];
+
   return (
     <>
-      <Header /> {/* Header visible on all pages */}
+      {/* Show Header only if current path is not in hideHeaderRoutes */}
+      {!hideHeaderRoutes.includes(location.pathname) && <Header />}
+
       <Routes>
         <Route path="/" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
