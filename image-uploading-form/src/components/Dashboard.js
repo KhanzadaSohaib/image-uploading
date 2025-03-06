@@ -1,70 +1,78 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
+import { useNavigate } from "react-router-dom"; // ✅ Import useNavigate
+import api from "../api"; // ✅ Import configured Axios instance
 import "./Dashboard.css";
 
 const Dashboard = () => {
   const [users, setUsers] = useState([]);
-  const [theme, setTheme] = useState("light");
+  const navigate = useNavigate(); // ✅ Initialize useNavigate
 
   useEffect(() => {
-    axios
-      .get("http://localhost:8005/api/users")
-      .then((response) => {
+    const fetchUsers = async () => {
+      try {
+        const token = localStorage.getItem("token"); // Retrieve JWT token
+        const response = await api.get("/api/users", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
         setUsers(response.data);
-      })
-      .catch((error) => {
-        console.error("❌ Error fetching users:", error);
-      });
+      } catch (error) {
+        console.error(
+          "❌ Error fetching users:",
+          error.response?.data || error.message
+        );
+      }
+    };
 
-    // Load saved theme from localStorage
-    const savedTheme = localStorage.getItem("theme") || "light";
-    setTheme(savedTheme);
-    document.body.classList.toggle("dark-theme", savedTheme === "dark");
+    fetchUsers();
   }, []);
 
-  const toggleTheme = () => {
-    const newTheme = theme === "light" ? "dark" : "light";
-    setTheme(newTheme);
-    localStorage.setItem("theme", newTheme);
-    document.body.classList.toggle("dark-theme", newTheme === "dark");
-  };
-
-  const handleDelete = (userId) => {
-    axios
-      .delete(`http://localhost:8005/api/users/${userId}`)
-      .then(() => {
-        setUsers(users.filter((user) => user._id !== userId));
-      })
-      .catch((error) => {
-        console.error("❌ Error deleting user:", error);
+  const handleDelete = async (userId) => {
+    try {
+      const token = localStorage.getItem("token");
+      await api.delete(`/api/users/${userId}`, {
+        headers: { Authorization: `Bearer ${token}` },
       });
+
+      setUsers(users.filter((user) => user._id !== userId));
+    } catch (error) {
+      console.error(
+        "❌ Error deleting user:",
+        error.response?.data || error.message
+      );
+    }
   };
 
   return (
-    <>
-      <div className="dashboard-container">
-        <h2 className="dashboard-title">Registered Users</h2>
-        <div className="user-cards">
-          {users.map((user) => (
-            <div key={user._id} className="user-card">
-              <img
-                src={user.image || "https://via.placeholder.com/150"}
-                alt={user.name || "User Avatar"}
-                className="user-image"
-              />
-              <h3 className="user-name">{user.name}</h3>
-              <p className="user-email">{user.email}</p>
+    <div className="dashboard-container">
+      <h2>Registered Users</h2>
+      <div className="user-cards">
+        {users.map((user) => (
+          <div key={user._id} className="user-card">
+            <img
+              src={user.image || "https://via.placeholder.com/150"}
+              alt={user.name}
+            />
+            <h3>{user.name}</h3>
+            <p>{user.email}</p>
+            <div>
               <button
                 className="delete-button"
                 onClick={() => handleDelete(user._id)}
               >
                 Delete
               </button>
+              {/* ✅ Chat Now Button */}
+              <button
+                className="chat-now-button"
+                onClick={() => navigate(`/chat?userId=${user._id}`)}
+              >
+                Chat Now
+              </button>
             </div>
-          ))}
-        </div>
+          </div>
+        ))}
       </div>
-    </>
+    </div>
   );
 };
 

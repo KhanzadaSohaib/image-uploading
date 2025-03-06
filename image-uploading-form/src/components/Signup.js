@@ -31,8 +31,13 @@ const Signup = () => {
         password,
       });
 
+      const API_BASE_URL =
+        process.env.REACT_APP_API_BASE_URL ||
+        "http://localhost:8005" ||
+        "https://server-5gujvqfe0-khanzadasohaibs-projects.vercel.app";
+
       const response = await axios.post(
-        "http://localhost:8005/api/signup",
+        `${API_BASE_URL}/api/signup`,
         {
           name,
           email,

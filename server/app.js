@@ -1,71 +1,127 @@
 const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
-const Stripe = require("stripe");
+const http = require("http");
+const { Server } = require("socket.io");
+const jwt = require("jsonwebtoken");
 const authRoutes = require("./routes/authRoutes");
 require("dotenv").config();
 
 const app = express();
-app.use(cors({ origin: "http://localhost:3000" })); // Adjust based on your frontend URL
+const server = http.createServer(app);
+
+// ✅ CORS Middleware
+app.use(
+  cors({
+    origin: "http://localhost:3000",
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
 app.use(express.json());
 
-// ✅ Ensure Stripe API Key is Set
-if (!process.env.STRIPE_SECRET_KEY) {
-  console.error("❌ Stripe Secret Key is missing in .env file!");
-  process.exit(1); // Exit if key is missing
-}
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-
-// ✅ MongoDB Connection
+// ✅ Connect to MongoDB
 mongoose
   .connect(process.env.MONGO_URI, {})
   .then(() => console.log("✅ MongoDB Connected"))
-  .catch((err) => console.error("❌ MongoDB Connection Error:", err));
+  .catch((err) => {
+    console.error("❌ MongoDB Connection Error:", err);
+    process.exit(1);
+  });
 
-// ✅ Payment Route
-app.post("/api/payment", async (req, res) => {
-  try {
-    const { paymentMethodId, amount } = req.body;
-
-    if (!paymentMethodId || !amount) {
-      return res.status(400).json({ success: false, message: "Invalid data" });
-    }
-
-    // ✅ Define Return URL Based on Environment
-    const returnUrl =
-      process.env.NODE_ENV === "production"
-        ? "https://your-production-site.com/payment-success"
-        : "http://localhost:3000/payment-success";
-
-    const amountInCents = Math.round(parseFloat(amount) * 100);
-
-    // ✅ Create Payment Intent
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: amount * 100, // Convert to cents
-      currency: "usd",
-      payment_method: paymentMethodId,
-      confirm: true,
-      automatic_payment_methods: { enabled: true },
-      return_url: returnUrl,
-    });
-
-    console.log(
-      "✅ PaymentIntent Response:",
-      JSON.stringify(paymentIntent, null, 2)
-    );
-
-    res.json({ success: true, paymentIntent });
-  } catch (error) {
-    console.error("❌ Stripe Payment Error:", error.message);
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// ✅ Mount Authentication Routes
 app.use("/api", authRoutes);
 
+// ✅ SOCKET.IO Setup
+const io = new Server(server, {
+  cors: {
+    origin: "http://localhost:3000",
+    methods: ["GET", "POST"],
+    credentials: true,
+  },
+});
+
+// ✅ Store user connections properly
+const users = new Map(); // { userId: { username, sockets: Set(socketId) } }
+
+// ✅ Socket.IO Authentication Middleware
+io.use((socket, next) => {
+  const token = socket.handshake.auth.token;
+  if (!token) {
+    return next(new Error("Unauthorized - No token provided"));
+  }
+
+  const rawToken = token.startsWith("Bearer ") ? token.split(" ")[1] : token;
+  jwt.verify(rawToken, process.env.JWT_SECRET, (err, decoded) => {
+    if (err) {
+      return next(new Error("Unauthorized - Invalid token"));
+    }
+
+    socket.user = {
+      userId: decoded.userId,
+      username: socket.handshake.auth.username,
+    };
+    next();
+  });
+});
+
+// ✅ Handle User Connection
+io.on("connection", (socket) => {
+  console.log("⚡ User connected:", socket.user?.userId);
+
+  if (!users.has(socket.user.userId)) {
+    users.set(socket.user.userId, new Set());
+  }
+  users.get(socket.user.userId).add(socket.id);
+
+  const userList = Array.from(users.keys()).map((userId) => {
+    return { userId, username: users.get(userId).username };
+  });
+
+  io.emit("updateUsers", userList);
+
+  socket.on("sendMessage", (message) => {
+    const user = users.get(socket.user.userId);
+    if (!user) {
+      console.error("❌ Sender not found:", socket.user.userId);
+      return;
+    }
+
+    const messageData = {
+      username: socket.user.username,
+      text: message.text,
+      userId: socket.user.userId,
+      timestamp: new Date().toISOString(),
+    };
+
+    console.log(
+      `📩 Broadcasting message from ${socket.user.username}:`,
+      messageData
+    );
+
+    io.emit("receiveMessage", messageData);
+  });
+
+  socket.on("disconnect", () => {
+    console.log(`🔴 User disconnected: ${socket.user.userId}`);
+
+    if (users.has(socket.user.userId)) {
+      const userSockets = users.get(socket.user.userId);
+      userSockets.delete(socket.id);
+
+      if (userSockets.size === 0) {
+        users.delete(socket.user.userId);
+      }
+    }
+
+    const updatedUserList = Array.from(users.keys()).map((userId) => {
+      return { userId, username: users.get(userId).username };
+    });
+
+    io.emit("updateUsers", updatedUserList);
+  });
+});
+
+// ✅ Start Server
 const PORT = process.env.PORT || 8005;
-app.listen(PORT, () =>
-  console.log(`🚀 Server running on http://localhost:${PORT}`)
-);
+server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));

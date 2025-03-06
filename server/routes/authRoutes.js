@@ -1,20 +1,61 @@
-require("dotenv").config(); // Load environment variables
+require("dotenv").config();
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const multer = require("multer");
 const cloudinary = require("../config/cloudinary"); // Import Cloudinary Config
 const User = require("../models/User");
+const asyncHandler = require("express-async-handler"); // Optional for better async handling
 
 const router = express.Router();
 
 // ✅ Configure Multer for Cloudinary Uploads
-const storage = multer.memoryStorage(); // Store file in memory
+const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
-// ✅ Register User (With Cloudinary Image Upload)
-router.post("/register", upload.single("image"), async (req, res) => {
+// ✅ Generate JWT Token
+const generateToken = (userId) => {
+  return jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: "1h" });
+};
+
+// ✅ Generate Refresh Token
+const generateRefreshToken = (userId) => {
+  return jwt.sign({ userId }, process.env.JWT_REFRESH_SECRET, {
+    expiresIn: "7d",
+  });
+};
+
+// ✅ Middleware to Protect Routes
+const protect = asyncHandler(async (req, res, next) => {
+  let token = req.headers.authorization;
+
+  if (!token || !token.startsWith("Bearer ")) {
+    return res
+      .status(401)
+      .json({ message: "Unauthorized - No token provided" });
+  }
+
   try {
+    token = token.split(" ")[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = await User.findById(decoded.userId).select("-password");
+
+    if (!req.user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    next();
+  } catch (error) {
+    console.error("❌ Auth Error:", error.message);
+    res.status(401).json({ message: "Unauthorized - Invalid token" });
+  }
+});
+
+// ✅ Register User (With Cloudinary Image Upload)
+router.post(
+  "/register",
+  upload.single("image"),
+  asyncHandler(async (req, res) => {
     const { name, email, password } = req.body;
 
     if (!name || !email || !password) {
@@ -39,21 +80,28 @@ router.post("/register", upload.single("image"), async (req, res) => {
       imageUrl = uploadResult.secure_url;
     }
 
-    const newUser = new User({ name, email, password, image: imageUrl });
+    const hashedPassword = await bcrypt.hash(password.trim(), 10);
+    const newUser = new User({
+      name,
+      email,
+      password: hashedPassword,
+      image: imageUrl,
+    });
     await newUser.save();
 
-    res
-      .status(201)
-      .json({ message: "User registered successfully", user: newUser });
-  } catch (error) {
-    console.error("❌ Registration Error:", error);
-    res.status(500).json({ message: "Server error" });
-  }
-});
+    res.status(201).json({
+      message: "User registered successfully",
+      user: newUser,
+      accessToken: generateToken(newUser._id),
+      refreshToken: generateRefreshToken(newUser._id),
+    });
+  })
+);
 
 // ✅ Register User (Without Image)
-router.post("/signup", async (req, res) => {
-  try {
+router.post(
+  "/signup",
+  asyncHandler(async (req, res) => {
     const { name, email, password, confirmPassword } = req.body;
 
     if (!name || !email || !password || !confirmPassword) {
@@ -70,20 +118,21 @@ router.post("/signup", async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password.trim(), 10);
     const newUser = new User({ name, email, password: hashedPassword });
-
     await newUser.save();
-    console.log("✅ User Saved Successfully:", newUser);
 
-    res.status(201).json({ message: "Signup successful!", user: newUser });
-  } catch (error) {
-    console.error("❌ Signup Error:", error);
-    res.status(500).json({ message: "Server error" });
-  }
-});
+    res.status(201).json({
+      message: "Signup successful!",
+      user: newUser,
+      accessToken: generateToken(newUser._id),
+      refreshToken: generateRefreshToken(newUser._id),
+    });
+  })
+);
 
 // ✅ User Login
-router.post("/login", async (req, res) => {
-  try {
+router.post(
+  "/login",
+  asyncHandler(async (req, res) => {
     const { email, password } = req.body;
     const user = await User.findOne({ email });
 
@@ -93,35 +142,70 @@ router.post("/login", async (req, res) => {
     if (!isMatch)
       return res.status(400).json({ message: "Invalid credentials" });
 
-    res.status(200).json({ message: "Login successful", user });
-  } catch (error) {
-    console.error("❌ Login Error:", error);
-    res.status(500).json({ message: "Server error" });
-  }
-});
+    res.status(200).json({
+      message: "Login successful",
+      token: generateToken(user._id),
+      refreshToken: generateRefreshToken(user._id),
+      user,
+    });
+  })
+);
 
 // ✅ Get All Users
-router.get("/users", async (req, res) => {
-  try {
+router.get(
+  "/users",
+  asyncHandler(async (req, res) => {
     const users = await User.find({}, "name email image");
     res.status(200).json(users);
-  } catch (error) {
-    console.error("❌ Error fetching users:", error);
-    res.status(500).json({ message: "Server error" });
-  }
-});
+  })
+);
 
 // ✅ Delete User
-router.delete("/users/:userId", async (req, res) => {
-  try {
+router.delete(
+  "/users/:userId",
+  asyncHandler(async (req, res) => {
     const user = await User.findByIdAndDelete(req.params.userId);
     if (!user) return res.status(404).json({ message: "User not found" });
 
     res.json({ message: "User deleted successfully" });
-  } catch (error) {
-    console.error("❌ Error deleting user:", error);
-    res.status(500).json({ message: "Server error" });
-  }
-});
+  })
+);
+
+// ✅ Refresh Token
+router.post(
+  "/refresh-token",
+  asyncHandler(async (req, res) => {
+    const { refreshToken } = req.body;
+
+    if (!refreshToken) {
+      return res.status(401).json({ message: "Refresh token is required" });
+    }
+
+    try {
+      const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+      const user = await User.findById(decoded.userId);
+
+      if (!user) {
+        return res.status(401).json({ message: "Invalid refresh token" });
+      }
+
+      // Issue a new access token
+      const newAccessToken = generateToken(user._id);
+      res.json({ accessToken: newAccessToken });
+    } catch (error) {
+      console.error("❌ Refresh Token Error:", error.message);
+      res.status(401).json({ message: "Invalid refresh token" });
+    }
+  })
+);
+
+// ✅ Protected Profile Route
+router.get(
+  "/profile",
+  protect,
+  asyncHandler(async (req, res) => {
+    res.json({ message: "Profile data", user: req.user });
+  })
+);
 
 module.exports = router;

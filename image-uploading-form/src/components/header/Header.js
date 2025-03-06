@@ -34,16 +34,20 @@ const Header = () => {
           Dashboard
         </button>
       </div>
+      <div>
+        {/* 🛒 Cart Button with Count */}
+        <button
+          className="cart-button"
+          onClick={() => handleNavigation("/cart")}
+        >
+          🛒 Cart ({cart.length}) {/* Show cart count */}
+        </button>
 
-      {/* 🛒 Cart Button with Count */}
-      <button className="cart-button" onClick={() => handleNavigation("/cart")}>
-        🛒 Cart ({cart.length}) {/* Show cart count */}
-      </button>
-
-      {/* 🔴 Logout Button */}
-      <button className="logout-button" onClick={() => handleNavigation("/")}>
-        Logout
-      </button>
+        {/* 🔴 Logout Button */}
+        <button className="logout-button" onClick={() => handleNavigation("/")}>
+          Logout
+        </button>
+      </div>
     </header>
   );
 };
