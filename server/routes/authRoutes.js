@@ -6,12 +6,20 @@ const multer = require("multer");
 const cloudinary = require("../config/cloudinary"); // Import Cloudinary Config
 const User = require("../models/User");
 const asyncHandler = require("express-async-handler"); // Optional for better async handling
+const mongoose = require("mongoose"); // Import Mongoose for ObjectId validation
+const rateLimit = require("express-rate-limit"); // Import rate limiter
 
 const router = express.Router();
 
 // ✅ Configure Multer for Cloudinary Uploads
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
+
+// ✅ Rate Limiter for Login and Registration
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+});
 
 // ✅ Generate JWT Token
 const generateToken = (userId) => {
@@ -68,16 +76,21 @@ router.post(
 
     let imageUrl = null;
     if (req.file) {
-      const uploadResult = await new Promise((resolve, reject) => {
-        cloudinary.uploader
-          .upload_stream({ folder: "user_profiles" }, (error, result) => {
-            if (error) reject(error);
-            else resolve(result);
-          })
-          .end(req.file.buffer);
-      });
+      try {
+        const uploadResult = await new Promise((resolve, reject) => {
+          cloudinary.uploader
+            .upload_stream({ folder: "user_profiles" }, (error, result) => {
+              if (error) reject(error);
+              else resolve(result);
+            })
+            .end(req.file.buffer);
+        });
 
-      imageUrl = uploadResult.secure_url;
+        imageUrl = uploadResult.secure_url;
+      } catch (error) {
+        console.error("❌ Cloudinary Upload Error:", error.message);
+        return res.status(500).json({ message: "Failed to upload image" });
+      }
     }
 
     const hashedPassword = await bcrypt.hash(password.trim(), 10);
@@ -88,6 +101,8 @@ router.post(
       image: imageUrl,
     });
     await newUser.save();
+
+    console.log(`User registered: ${newUser.email}`);
 
     res.status(201).json({
       message: "User registered successfully",
@@ -101,6 +116,7 @@ router.post(
 // ✅ Register User (Without Image)
 router.post(
   "/signup",
+  limiter, // Apply rate limiter
   asyncHandler(async (req, res) => {
     const { name, email, password, confirmPassword } = req.body;
 
@@ -120,6 +136,8 @@ router.post(
     const newUser = new User({ name, email, password: hashedPassword });
     await newUser.save();
 
+    console.log(`User signed up: ${newUser.email}`);
+
     res.status(201).json({
       message: "Signup successful!",
       user: newUser,
@@ -132,6 +150,7 @@ router.post(
 // ✅ User Login
 router.post(
   "/login",
+  limiter, // Apply rate limiter
   asyncHandler(async (req, res) => {
     const { email, password } = req.body;
     const user = await User.findOne({ email });
@@ -141,6 +160,8 @@ router.post(
     const isMatch = await bcrypt.compare(password.trim(), user.password);
     if (!isMatch)
       return res.status(400).json({ message: "Invalid credentials" });
+
+    console.log(`User logged in: ${user.email}`);
 
     res.status(200).json({
       message: "Login successful",
@@ -164,8 +185,19 @@ router.get(
 router.delete(
   "/users/:userId",
   asyncHandler(async (req, res) => {
-    const user = await User.findByIdAndDelete(req.params.userId);
-    if (!user) return res.status(404).json({ message: "User not found" });
+    const { userId } = req.params;
+
+    // Check if userId is a valid ObjectId
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ message: "Invalid user ID" });
+    }
+
+    const user = await User.findByIdAndDelete(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    console.log(`User deleted: ${user.email}`);
 
     res.json({ message: "User deleted successfully" });
   })
@@ -204,7 +236,8 @@ router.get(
   "/profile",
   protect,
   asyncHandler(async (req, res) => {
-    res.json({ message: "Profile data", user: req.user });
+    const user = await User.findById(req.user._id).select("-password");
+    res.json({ message: "Profile data", user });
   })
 );
 

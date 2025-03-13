@@ -2,7 +2,8 @@
   "name": "image-uploading-form",
   "version": "0.1.0",
   "private": true,
-  "proxy": "http://localhost:8005",
+  "proxy": "https://server-5gujvqfe0-khanzadasohaibs-projects.vercel.app",
+
   "dependencies": {
     "@stripe/react-stripe-js": "^3.1.1",
     "@stripe/stripe-js": "^5.7.0",
@@ -55,4 +56,5 @@
     "postcss": "^8.5.3",
     "tailwindcss": "^3.4.17"
   }
+  
 }

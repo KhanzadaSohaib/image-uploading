@@ -2,8 +2,8 @@ import axios from "axios";
 
 const API_BASE_URL =
   process.env.NODE_ENV === "production"
-    ? "https://server-5gujvqfe0-khanzadasohaibs-projects.vercel.app"
-    : "http://localhost:8005"; // Ensure this matches your backend port
+    ? "https://server-tan-zeta-64.vercel.app/api"
+    : "http://localhost:8005/api";
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -27,10 +27,12 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     if (error.response?.status === 401) {
-      const refreshToken = localStorage.getItem("refreshToken");
+      console.warn("401 Unauthorized - Attempting token refresh...");
 
+      const refreshToken = localStorage.getItem("refreshToken");
       if (!refreshToken) {
-        console.log("No refresh token found. Redirecting to login...");
+        console.error("No refresh token found. Redirecting to login...");
+        localStorage.removeItem("accessToken");
         window.location.href = "/login";
         return Promise.reject(error);
       }
@@ -48,11 +50,13 @@ api.interceptors.response.use(
         return api(error.config); // ✅ Retry failed request
       } catch (refreshError) {
         console.error("Refresh token expired. Redirecting to login...");
+        localStorage.removeItem("accessToken");
         localStorage.removeItem("refreshToken");
-        window.location.href = "/login";
+        window.location.href = "/";
         return Promise.reject(refreshError);
       }
     }
+
     return Promise.reject(error);
   }
 );

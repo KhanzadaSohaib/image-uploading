@@ -11,7 +11,7 @@ const Dashboard = () => {
     const fetchUsers = async () => {
       try {
         const token = localStorage.getItem("token"); // Retrieve JWT token
-        const response = await api.get("/api/users", {
+        const response = await api.get("/users", {
           headers: { Authorization: `Bearer ${token}` },
         });
         setUsers(response.data);
@@ -29,7 +29,7 @@ const Dashboard = () => {
   const handleDelete = async (userId) => {
     try {
       const token = localStorage.getItem("token");
-      await api.delete(`/api/users/${userId}`, {
+      await api.delete(`/users/${userId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 

@@ -23,14 +23,30 @@ const app = express();
 const server = http.createServer(app);
 
 // ✅ CORS Middleware
+const allowedOrigins = [
+  "http://localhost:3000", // For local development
+  "https://image-uploading-form.vercel.app", // Your frontend URL
+  "https://image-uploading-form-iwmensn0k-khanzadasohaibs-projects.vercel.app", // Your frontend URL (alternate)
+];
+
 app.use(
   cors({
-    origin: "http://localhost:3000",
+    origin: function (origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
     credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE"],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"], // Include OPTIONS for preflight
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
+
+// ✅ Handle preflight requests
+app.options("*", cors()); // Allow preflight requests for all routes
+
 app.use(express.json());
 
 // ✅ Connect to MongoDB
@@ -70,7 +86,7 @@ app.post("/api/payment", async (req, res) => {
 // ✅ SOCKET.IO Setup
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:3000",
+    origin: allowedOrigins, // Allow Socket.IO connections from frontend
     methods: ["GET", "POST"],
     credentials: true,
   },
