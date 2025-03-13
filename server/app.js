@@ -24,9 +24,9 @@ const server = http.createServer(app);
 
 // ✅ CORS Middleware - FIXED for Preflight Requests
 const allowedOrigins = [
-  "http://localhost:3000", // For local development
-  "https://image-uploading-form.vercel.app", // Your frontend URL
-  "https://image-uploading-form-iwmensn0k-khanzadasohaibs-projects.vercel.app", // Alternate frontend URL
+  "http://localhost:3000", // Localhost for development
+  "https://image-uploading-form.vercel.app", // Production frontend
+  "https://image-uploading-form-ftctmw0g7-khanzadasohaibs-projects.vercel.app", // New deployed preview
 ];
 
 app.use(
