@@ -22,30 +22,39 @@ const authRoutes = require("./routes/authRoutes");
 const app = express();
 const server = http.createServer(app);
 
-// ✅ CORS Middleware
+// ✅ CORS Middleware - FIXED for Preflight Requests
 const allowedOrigins = [
   "http://localhost:3000", // For local development
   "https://image-uploading-form.vercel.app", // Your frontend URL
-  "https://image-uploading-form-iwmensn0k-khanzadasohaibs-projects.vercel.app", // Your frontend URL (alternate)
+  "https://image-uploading-form-iwmensn0k-khanzadasohaibs-projects.vercel.app", // Alternate frontend URL
 ];
 
 app.use(
   cors({
     origin: function (origin, callback) {
+      console.log("🔍 Incoming request from:", origin);
+
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
+        console.log("❌ CORS blocked for:", origin);
         callback(new Error("Not allowed by CORS"));
       }
     },
     credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"], // Include OPTIONS for preflight
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 
-// ✅ Handle preflight requests
-app.options("*", cors()); // Allow preflight requests for all routes
+// ✅ Handle Preflight Requests
+app.options("*", (req, res) => {
+  res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.header("Access-Control-Allow-Credentials", "true");
+  res.status(200).end();
+});
 
 app.use(express.json());
 
@@ -78,7 +87,7 @@ app.post("/api/payment", async (req, res) => {
 
     res.json({ success: true, clientSecret: paymentIntent.client_secret });
   } catch (error) {
-    console.error("Payment Error:", error);
+    console.error("❌ Payment Error:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -110,7 +119,7 @@ io.use((socket, next) => {
 
     socket.user = {
       userId: decoded.userId,
-      username: socket.handshake.auth.username,
+      username: socket.handshake.auth.username || "Anonymous", // Ensure username exists
     };
     next();
   });
@@ -121,13 +130,17 @@ io.on("connection", (socket) => {
   console.log("⚡ User connected:", socket.user?.userId);
 
   if (!users.has(socket.user.userId)) {
-    users.set(socket.user.userId, new Set());
+    users.set(socket.user.userId, {
+      username: socket.user.username,
+      sockets: new Set(),
+    });
   }
-  users.get(socket.user.userId).add(socket.id);
+  users.get(socket.user.userId).sockets.add(socket.id);
 
-  const userList = Array.from(users.keys()).map((userId) => {
-    return { userId, username: users.get(userId).username };
-  });
+  const userList = Array.from(users.entries()).map(([userId, data]) => ({
+    userId,
+    username: data.username,
+  }));
 
   io.emit("updateUsers", userList);
 
@@ -157,7 +170,7 @@ io.on("connection", (socket) => {
     console.log(`🔴 User disconnected: ${socket.user.userId}`);
 
     if (users.has(socket.user.userId)) {
-      const userSockets = users.get(socket.user.userId);
+      const userSockets = users.get(socket.user.userId).sockets;
       userSockets.delete(socket.id);
 
       if (userSockets.size === 0) {
@@ -165,9 +178,12 @@ io.on("connection", (socket) => {
       }
     }
 
-    const updatedUserList = Array.from(users.keys()).map((userId) => {
-      return { userId, username: users.get(userId).username };
-    });
+    const updatedUserList = Array.from(users.entries()).map(
+      ([userId, data]) => ({
+        userId,
+        username: data.username,
+      })
+    );
 
     io.emit("updateUsers", updatedUserList);
   });

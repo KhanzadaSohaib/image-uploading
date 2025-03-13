@@ -33,7 +33,7 @@ api.interceptors.response.use(
       if (!refreshToken) {
         console.error("No refresh token found. Redirecting to login...");
         localStorage.removeItem("accessToken");
-        window.location.href = "/login";
+        window.location.href = "/";
         return Promise.reject(error);
       }
 
