@@ -1,4 +1,5 @@
-require("dotenv").config(); // ✅ Load .env before anything else
+require("dotenv").config(); // Load environment variables from .env file
+const Message = require("./models/Message"); // Ensure this is included
 
 const express = require("express");
 const cors = require("cors");
@@ -6,15 +7,16 @@ const mongoose = require("mongoose");
 const http = require("http");
 const { Server } = require("socket.io");
 const jwt = require("jsonwebtoken");
+const messageRoutes = require("./routes/messageRoutes"); // ✅ Import Routes AFTER Express
 
-// ✅ Debugging: Print Stripe Key to verify it's loading
+// Debugging: Print Stripe Key to verify it's loading
 console.log("Stripe Key:", process.env.STRIPE_SECRET_KEY);
 
 if (!process.env.STRIPE_SECRET_KEY) {
   throw new Error("❌ STRIPE_SECRET_KEY is not defined in .env file!");
 }
 
-// ✅ Initialize Stripe AFTER loading .env
+// Initialize Stripe AFTER loading .env
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
 const authRoutes = require("./routes/authRoutes");
@@ -22,11 +24,10 @@ const authRoutes = require("./routes/authRoutes");
 const app = express();
 const server = http.createServer(app);
 
-// ✅ CORS Middleware - FIXED for Preflight Requests
+// CORS Configuration
 const allowedOrigins = [
-  "http://localhost:3000", // Localhost for development
-  "https://image-uploading-form.vercel.app", // Production frontend
-  "https://image-uploading-form-ftctmw0g7-khanzadasohaibs-projects.vercel.app", // New deployed preview
+  "http://localhost:3000", // Local development
+  "https://your-frontend-domain.com", // Production frontend
 ];
 
 app.use(
@@ -47,7 +48,7 @@ app.use(
   })
 );
 
-// ✅ Handle Preflight Requests
+// Handle Preflight Requests
 app.options("*", (req, res) => {
   res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
   res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
@@ -58,7 +59,7 @@ app.options("*", (req, res) => {
 
 app.use(express.json());
 
-// ✅ Connect to MongoDB
+// Connect to MongoDB
 mongoose
   .connect(process.env.MONGO_URI, {})
   .then(() => console.log("✅ MongoDB Connected"))
@@ -67,9 +68,10 @@ mongoose
     process.exit(1);
   });
 
+// Routes
 app.use("/api", authRoutes);
 
-// ✅ Stripe Payment Endpoint
+// Stripe Payment Endpoint
 app.post("/api/payment", async (req, res) => {
   try {
     const { amount, paymentMethodId } = req.body;
@@ -92,7 +94,9 @@ app.post("/api/payment", async (req, res) => {
   }
 });
 
-// ✅ SOCKET.IO Setup
+app.use("/api/messages", messageRoutes); // ✅ Add Message API
+
+// Socket.IO Setup
 const io = new Server(server, {
   cors: {
     origin: allowedOrigins, // Allow Socket.IO connections from frontend
@@ -101,10 +105,10 @@ const io = new Server(server, {
   },
 });
 
-// ✅ Store user connections properly
+// Store user connections properly
 const users = new Map();
 
-// ✅ Socket.IO Authentication Middleware
+// Socket.IO Authentication Middleware
 io.use((socket, next) => {
   const token = socket.handshake.auth.token;
   if (!token) {
@@ -125,10 +129,11 @@ io.use((socket, next) => {
   });
 });
 
-// ✅ Handle User Connection
+// Handle User Connection
 io.on("connection", (socket) => {
-  console.log("⚡ User connected:", socket.user?.userId);
+  console.log(`⚡ User connected: ${socket.user?.userId}`);
 
+  // Add user to the users map
   if (!users.has(socket.user.userId)) {
     users.set(socket.user.userId, {
       username: socket.user.username,
@@ -137,35 +142,53 @@ io.on("connection", (socket) => {
   }
   users.get(socket.user.userId).sockets.add(socket.id);
 
+  // Send updated user list to all connected clients
   const userList = Array.from(users.entries()).map(([userId, data]) => ({
     userId,
     username: data.username,
   }));
-
   io.emit("updateUsers", userList);
 
-  socket.on("sendMessage", (message) => {
-    const user = users.get(socket.user.userId);
-    if (!user) {
+  // Notify all clients that this user is online
+  io.emit("userOnline", socket.user.userId);
+
+  // Handle private messages
+  socket.on("sendMessage", ({ receiverId, text }) => {
+    const sender = users.get(socket.user.userId);
+    if (!sender) {
       console.error("❌ Sender not found:", socket.user.userId);
       return;
     }
 
     const messageData = {
-      username: socket.user.username,
-      text: message.text,
-      userId: socket.user.userId,
+      senderId: socket.user.userId,
+      senderUsername: socket.user.username,
+      receiverId,
+      text,
       timestamp: new Date().toISOString(),
     };
 
     console.log(
-      `📩 Broadcasting message from ${socket.user.username}:`,
-      messageData
+      `📩 Message from ${socket.user.username} to ${receiverId}:`,
+      text
     );
 
-    io.emit("receiveMessage", messageData);
+    // Send the message to the sender's all tabs
+    sender.sockets.forEach((socketId) => {
+      io.to(socketId).emit("receiveMessage", messageData);
+    });
+
+    // Check if the receiver is online and send the message to all their open tabs
+    if (users.has(receiverId)) {
+      users.get(receiverId).sockets.forEach((socketId) => {
+        io.to(socketId).emit("receiveMessage", messageData);
+      });
+    } else {
+      console.log(`🔴 Receiver (${receiverId}) is offline`);
+    }
   });
 
+  // Handle user disconnection
   socket.on("disconnect", () => {
     console.log(`🔴 User disconnected: ${socket.user.userId}`);
 
@@ -173,22 +196,47 @@ io.on("connection", (socket) => {
       const userSockets = users.get(socket.user.userId).sockets;
       userSockets.delete(socket.id);
 
+      // Remove user if no active sockets remain
       if (userSockets.size === 0) {
         users.delete(socket.user.userId);
+        io.emit("userOffline", socket.user.userId);
       }
     }
 
+    // Update all users with the new user list
     const updatedUserList = Array.from(users.entries()).map(
       ([userId, data]) => ({
         userId,
         username: data.username,
       })
     );
-
     io.emit("updateUsers", updatedUserList);
   });
 });
+app.get("/api/messages/:senderId/:recipientId", async (req, res) => {
+  const { senderId, recipientId } = req.params;
 
-// ✅ Start Server
+  try {
+    const messages = await Message.find({
+      $or: [
+        {
+          senderId: new mongoose.Types.ObjectId(senderId),
+          recipientId: new mongoose.Types.ObjectId(recipientId),
+        },
+        {
+          senderId: new mongoose.Types.ObjectId(recipientId),
+          recipientId: new mongoose.Types.ObjectId(senderId),
+        },
+      ],
+    }).sort({ timestamp: 1 });
+
+    res.status(200).json(messages); // ✅ Always return 200, even if empty
+  } catch (error) {
+    console.error("❌ Error fetching messages:", error);
+    res.status(500).json({ message: "Internal server error." });
+  }
+});
+
+// Start Server
 const PORT = process.env.PORT || 8005;
 server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));

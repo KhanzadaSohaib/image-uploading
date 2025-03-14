@@ -19,6 +19,7 @@ const upload = multer({ storage });
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // Limit each IP to 100 requests per windowMs
+  message: "Too many requests, please try again later.",
 });
 
 // ✅ Generate JWT Token
@@ -66,14 +67,18 @@ router.post(
   asyncHandler(async (req, res) => {
     const { name, email, password } = req.body;
 
+    // Validate required fields
     if (!name || !email || !password) {
       return res.status(400).json({ message: "All fields are required" });
     }
 
-    if (await User.findOne({ email })) {
+    // Check if user already exists
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
       return res.status(400).json({ message: "User already exists" });
     }
 
+    // Upload image to Cloudinary if provided
     let imageUrl = null;
     if (req.file) {
       try {
@@ -93,6 +98,7 @@ router.post(
       }
     }
 
+    // Hash password and create new user
     const hashedPassword = await bcrypt.hash(password.trim(), 10);
     const newUser = new User({
       name,
@@ -104,6 +110,7 @@ router.post(
 
     console.log(`User registered: ${newUser.email}`);
 
+    // Return success response with tokens
     res.status(201).json({
       message: "User registered successfully",
       user: newUser,
@@ -120,24 +127,30 @@ router.post(
   asyncHandler(async (req, res) => {
     const { name, email, password, confirmPassword } = req.body;
 
+    // Validate required fields
     if (!name || !email || !password || !confirmPassword) {
       return res.status(400).json({ message: "All fields are required" });
     }
 
+    // Check if passwords match
     if (password !== confirmPassword) {
       return res.status(400).json({ message: "Passwords do not match!" });
     }
 
-    if (await User.findOne({ email })) {
+    // Check if user already exists
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
       return res.status(400).json({ message: "Email already exists!" });
     }
 
+    // Hash password and create new user
     const hashedPassword = await bcrypt.hash(password.trim(), 10);
     const newUser = new User({ name, email, password: hashedPassword });
     await newUser.save();
 
     console.log(`User signed up: ${newUser.email}`);
 
+    // Return success response with tokens
     res.status(201).json({
       message: "Signup successful!",
       user: newUser,
@@ -153,16 +166,22 @@ router.post(
   limiter, // Apply rate limiter
   asyncHandler(async (req, res) => {
     const { email, password } = req.body;
+
+    // Find user by email
     const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(400).json({ message: "User not found" });
+    }
 
-    if (!user) return res.status(400).json({ message: "User not found" });
-
+    // Compare passwords
     const isMatch = await bcrypt.compare(password.trim(), user.password);
-    if (!isMatch)
+    if (!isMatch) {
       return res.status(400).json({ message: "Invalid credentials" });
+    }
 
     console.log(`User logged in: ${user.email}`);
 
+    // Return success response with tokens
     res.status(200).json({
       message: "Login successful",
       token: generateToken(user._id),
@@ -187,11 +206,12 @@ router.delete(
   asyncHandler(async (req, res) => {
     const { userId } = req.params;
 
-    // Check if userId is a valid ObjectId
+    // Validate ObjectId
     if (!mongoose.Types.ObjectId.isValid(userId)) {
       return res.status(400).json({ message: "Invalid user ID" });
     }
 
+    // Find and delete user
     const user = await User.findByIdAndDelete(userId);
     if (!user) {
       return res.status(404).json({ message: "User not found" });
@@ -199,6 +219,7 @@ router.delete(
 
     console.log(`User deleted: ${user.email}`);
 
+    // Return success response
     res.json({ message: "User deleted successfully" });
   })
 );
@@ -209,11 +230,13 @@ router.post(
   asyncHandler(async (req, res) => {
     const { refreshToken } = req.body;
 
+    // Validate refresh token
     if (!refreshToken) {
       return res.status(401).json({ message: "Refresh token is required" });
     }
 
     try {
+      // Verify refresh token
       const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
       const user = await User.findById(decoded.userId);
 
@@ -230,6 +253,22 @@ router.post(
     }
   })
 );
+router.get("/:senderId/:receiverId", async (req, res) => {
+  try {
+    const { senderId, receiverId } = req.params;
+    const messages = await Message.find({
+      $or: [
+        { sender: senderId, receiver: receiverId },
+        { sender: receiverId, receiver: senderId },
+      ],
+    }).sort({ timestamp: 1 });
+
+    res.json(messages);
+  } catch (error) {
+    console.error("Error fetching messages:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 // ✅ Protected Profile Route
 router.get(

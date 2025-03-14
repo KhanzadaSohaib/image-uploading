@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import io from "socket.io-client";
-import "./Chat.css"; // Import CSS file
+import axios from "axios";
+import "./Chat.css";
 
 const API_URL =
   process.env.REACT_APP_API_URL ||
@@ -9,148 +10,224 @@ const API_URL =
     : "https://your-deployed-backend.vercel.app");
 
 const Chat = () => {
-  const [username, setUsername] = useState("");
-  const [nameInput, setNameInput] = useState("");
-  const [message, setMessage] = useState("");
   const [messages, setMessages] = useState([]);
+  const [message, setMessage] = useState("");
   const [users, setUsers] = useState([]);
-  const messageInputRef = useRef(null);
+  const [onlineUsers, setOnlineUsers] = useState({});
+  const [loggedInUser, setLoggedInUser] = useState(null);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [typing, setTyping] = useState(false);
+  const messagesEndRef = useRef(null);
   const socketRef = useRef(null);
 
-  // 🌐 Establish socket connection when username is set
+  // Fetch logged-in user
   useEffect(() => {
-    if (!username.trim()) return;
+    const fetchLoggedInUser = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const response = await axios.get(`${API_URL}/api/profile`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setLoggedInUser(response.data.user);
+      } catch (error) {
+        console.error("❌ Error fetching logged-in user:", error);
+      }
+    };
+    fetchLoggedInUser();
+  }, []);
+
+  // Fetch all users
+  useEffect(() => {
+    const fetchAllUsers = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const response = await axios.get(`${API_URL}/api/users`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setUsers(response.data);
+      } catch (error) {
+        console.error("❌ Error fetching users:", error);
+      }
+    };
+    fetchAllUsers();
+  }, []);
+
+  // Connect to Socket.io
+  useEffect(() => {
+    if (!loggedInUser?._id) return;
 
     const token = localStorage.getItem("token");
     socketRef.current = io(API_URL, {
-      auth: { token, username },
+      auth: { token },
       withCredentials: true,
       transports: ["websocket"],
     });
 
-    console.log("🔗 Connected to Socket.IO");
-
-    // ✅ Listen for messages
-    socketRef.current.on("receiveMessage", (data) => {
-      console.log("📩 Received message:", data);
-      setMessages((prev) => [...prev, data]);
+    socketRef.current.on("updateUserStatus", (onlineUsers) => {
+      setOnlineUsers(onlineUsers);
     });
 
-    // ✅ Update online users
-    socketRef.current.on("updateUsers", (userList) => {
-      console.log("👥 Updated user list:", userList);
-      setUsers(userList);
+    socketRef.current.on("receivePrivateMessage", (newMessage) => {
+      setMessages((prevMessages) => [...prevMessages, newMessage]);
     });
 
-    // ✅ Handle errors
-    socketRef.current.on("connect_error", (err) => {
-      console.error("❌ Socket error:", err.message);
-      if (err.message.includes("Unauthorized")) {
-        localStorage.removeItem("token");
-        window.location.href = "/login";
+    socketRef.current.on("userTyping", (userId) => {
+      if (selectedUser?._id === userId) {
+        setTyping(true);
+        setTimeout(() => setTyping(false), 2000);
       }
     });
 
     return () => {
-      console.log("🔌 Disconnecting socket...");
       socketRef.current.disconnect();
     };
-  }, [username]);
+  }, [loggedInUser, selectedUser]);
 
-  // 🏃 Handle user joining the chat
-  const handleJoin = () => {
-    if (!nameInput.trim()) return;
-    setUsername(nameInput);
-    setNameInput("");
-  };
+  // Fetch chat messages between logged-in user & selected user
+  useEffect(() => {
+    if (!selectedUser || !loggedInUser) return;
 
-  // ✉️ Send message
-  const handleSendMessage = useCallback(() => {
-    if (!message.trim() || !username) return;
+    console.log("Fetching messages for:", loggedInUser._id, selectedUser._id);
 
-    const currentUser = JSON.parse(localStorage.getItem("currentUser"));
-    if (!currentUser || !currentUser._id) {
-      console.error("❌ Current user not found in localStorage!");
-      return;
-    }
+    const fetchMessages = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const response = await axios.get(
+          `${API_URL}/api/messages/${loggedInUser._id}/${selectedUser._id}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+
+        if (response.status === 200) {
+          setMessages(response.data);
+        } else {
+          setMessages([]);
+        }
+      } catch (error) {
+        console.error("❌ Error fetching messages:", error.response || error);
+        setMessages([]);
+      }
+    };
+
+    fetchMessages();
+  }, [selectedUser, loggedInUser]);
+
+  // Auto-scroll to latest message
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  // Send message
+  const handleSendMessage = async () => {
+    if (!message.trim() || !selectedUser?._id || !loggedInUser?._id) return;
 
     const newMessage = {
-      senderId: currentUser._id,
-      username,
+      senderId: loggedInUser._id,
+      recipientId: selectedUser._id,
       text: message,
       timestamp: new Date().toISOString(),
     };
 
-    console.log("🚀 Sending message:", newMessage);
-    socketRef.current?.emit("sendMessage", newMessage);
-    setMessage("");
+    setMessages([...messages, newMessage]);
 
-    // Auto-focus message input after sending
-    setTimeout(() => messageInputRef.current?.focus(), 100);
-  }, [message, username]);
+    try {
+      await axios.post(`${API_URL}/api/messages/send`, newMessage, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      });
+
+      socketRef.current?.emit("sendPrivateMessage", newMessage);
+    } catch (error) {
+      console.error("❌ Error sending message:", error);
+    }
+
+    setMessage("");
+  };
+
+  // Handle typing
+  const handleTyping = () => {
+    socketRef.current?.emit("typing", selectedUser?._id);
+  };
 
   return (
     <div className="chat-container">
-      <h2>Chat Room</h2>
-
-      {!username ? (
-        <div className="join-container">
-          <input
-            type="text"
-            placeholder="Enter your name"
-            value={nameInput}
-            onChange={(e) => setNameInput(e.target.value)}
-          />
-          <button onClick={handleJoin}>Join Chat</button>
-        </div>
-      ) : (
-        <div className="chat-box">
-          <div className="chat-header">
-            <h3>Welcome, {username}!</h3>
-          </div>
-
-          <div className="users-list">
-            <h4>Online Users:</h4>
-            <ul>
-              {users.length > 0 ? (
-                users.map((user, index) => (
-                  <li key={user.userId || index}>
-                    {user.username || "Unknown User"}
-                  </li>
-                ))
-              ) : (
-                <li>No users online</li>
-              )}
-            </ul>
-          </div>
-
-          <div className="messages-container">
-            {messages.map((msg, index) => (
-              <div
-                key={index}
-                className={`message-group ${
-                  msg.username === username ? "sent" : "received"
+      <aside className="sidebar">
+        <h3>Chats</h3>
+        <ul>
+          {users
+            .filter((user) => user._id !== loggedInUser?._id)
+            .map((user) => (
+              <li
+                key={user._id}
+                className={`user ${
+                  selectedUser?._id === user._id ? "active" : ""
                 }`}
+                onClick={() => setSelectedUser(user)}
               >
-                <span className="message-username">{msg.username}</span>
-                <div className="message-bubble">{msg.text}</div>
-              </div>
+                <div
+                  className="status-dot"
+                  style={{
+                    background: onlineUsers[user._id] ? "green" : "gray",
+                  }}
+                ></div>
+                <img src={user.image} alt={user.name} className="avatar" />
+                <span>{user.name}</span>
+              </li>
             ))}
-          </div>
+        </ul>
+      </aside>
 
-          <div className="input-container">
-            <input
-              ref={messageInputRef}
-              type="text"
-              value={message}
-              placeholder="Type a message..."
-              onChange={(e) => setMessage(e.target.value)}
-              onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}
-            />
-            <button onClick={handleSendMessage}>Send</button>
-          </div>
-        </div>
-      )}
+      <div className="chat-window">
+        {selectedUser ? (
+          <>
+            <header className="chat-header">
+              <div
+                className="status-dot"
+                style={{
+                  background: onlineUsers[selectedUser._id] ? "green" : "gray",
+                }}
+              ></div>
+              <img
+                src={selectedUser.image}
+                alt={selectedUser.name}
+                className="avatar"
+              />
+              <h3>{selectedUser.name}</h3>
+            </header>
+
+            <div className="messages">
+              {messages.map((msg, index) => (
+                <div
+                  key={index}
+                  className={`message ${
+                    msg.senderId === loggedInUser?._id ? "sent" : "received"
+                  }`}
+                >
+                  <p>{msg.text}</p>
+                </div>
+              ))}
+              {typing && <div className="typing-indicator">Typing...</div>}
+              <div ref={messagesEndRef} />
+            </div>
+
+            <footer className="chat-input">
+              <input
+                type="text"
+                placeholder="Type a message..."
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                onKeyPress={(e) => {
+                  handleTyping();
+                  if (e.key === "Enter") handleSendMessage();
+                }}
+              />
+              <button onClick={handleSendMessage}>Send</button>
+            </footer>
+          </>
+        ) : (
+          <div className="select-user">Select a user to start chatting</div>
+        )}
+      </div>
     </div>
   );
 };

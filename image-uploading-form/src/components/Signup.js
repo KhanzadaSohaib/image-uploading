@@ -25,36 +25,28 @@ const Signup = () => {
     }
 
     try {
-      console.log("\ud83d\udce4 Sending Signup Data:", {
-        name,
-        email,
-        password,
-      });
+      console.log("📤 Sending Signup Data:", { name, email, password });
 
       const API_BASE_URL =
         process.env.REACT_APP_API_BASE_URL ||
         "http://localhost:8005" ||
-        "https://server-5gujvqfe0-khanzadasohaibs-projects.vercel.app";
+        "https://server-qtvsvsydn-khanzadasohaibs-projects.vercel.app";
 
       const response = await axios.post(
         `${API_BASE_URL}/api/signup`,
+        { name, email, password, confirmPassword },
         {
-          name,
-          email,
-          password,
-          confirmPassword,
-        }, // ✅ Send data as JSON
-        {
-          headers: { "Content-Type": "application/json" }, // ✅ Correct headers
+          headers: { "Content-Type": "application/json" },
+          withCredentials: true,
         }
       );
 
-      console.log("\u2705 Signup Response:", response.data);
+      console.log("✅ Signup Response:", response.data);
       alert(response.data.message || "Signup successful!");
       navigate("/");
     } catch (error) {
       console.error(
-        "\u274c Signup Error:",
+        "❌ Signup Error:",
         error.response?.data?.message || error.message
       );
       alert(error.response?.data?.message || "Signup failed!");
