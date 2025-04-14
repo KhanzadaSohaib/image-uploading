@@ -1,231 +1,351 @@
 import React, { useState, useEffect, useRef } from "react";
 import io from "socket.io-client";
 import axios from "axios";
+import {
+  FiMoreVertical,
+  FiSearch,
+  FiPaperclip,
+  FiMic,
+  FiSmile,
+} from "react-icons/fi";
+import { BsCheck2All, BsThreeDotsVertical } from "react-icons/bs";
 import "./Chat.css";
 
-const API_URL =
-  process.env.REACT_APP_API_URL ||
-  (window.location.hostname === "localhost"
-    ? "http://localhost:8005"
-    : "https://your-deployed-backend.vercel.app");
+const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8005";
 
 const Chat = () => {
   const [messages, setMessages] = useState([]);
-  const [message, setMessage] = useState("");
+  const [messageInput, setMessageInput] = useState("");
   const [users, setUsers] = useState([]);
-  const [onlineUsers, setOnlineUsers] = useState({});
-  const [loggedInUser, setLoggedInUser] = useState(null);
+  const [activeUsers, setActiveUsers] = useState([]);
+  const [currentUser, setCurrentUser] = useState(null);
   const [selectedUser, setSelectedUser] = useState(null);
-  const [typing, setTyping] = useState(false);
+  const [isSending, setIsSending] = useState(false);
   const messagesEndRef = useRef(null);
   const socketRef = useRef(null);
 
-  // Fetch logged-in user
+  // Auto-scroll to bottom of messages
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
   useEffect(() => {
-    const fetchLoggedInUser = async () => {
+    scrollToBottom();
+  }, [messages]);
+
+  // Fetch current user
+  useEffect(() => {
+    const fetchCurrentUser = async () => {
       try {
         const token = localStorage.getItem("token");
         const response = await axios.get(`${API_URL}/api/profile`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        setLoggedInUser(response.data.user);
+        setCurrentUser(response.data.user);
       } catch (error) {
-        console.error("❌ Error fetching logged-in user:", error);
+        console.error("Error fetching user:", error);
       }
     };
-    fetchLoggedInUser();
+    fetchCurrentUser();
   }, []);
 
   // Fetch all users
   useEffect(() => {
-    const fetchAllUsers = async () => {
+    const fetchUsers = async () => {
+      if (!currentUser) return;
       try {
         const token = localStorage.getItem("token");
         const response = await axios.get(`${API_URL}/api/users`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        setUsers(response.data);
+        setUsers(response.data.filter((user) => user._id !== currentUser._id));
       } catch (error) {
-        console.error("❌ Error fetching users:", error);
+        console.error("Error fetching users:", error);
       }
     };
-    fetchAllUsers();
-  }, []);
+    fetchUsers();
+  }, [currentUser]);
 
-  // Connect to Socket.io
+  // Socket.IO connection and message handling
   useEffect(() => {
-    if (!loggedInUser?._id) return;
+    if (!currentUser) return;
 
     const token = localStorage.getItem("token");
     socketRef.current = io(API_URL, {
       auth: { token },
       withCredentials: true,
-      transports: ["websocket"],
     });
 
-    socketRef.current.on("updateUserStatus", (onlineUsers) => {
-      setOnlineUsers(onlineUsers);
+    socketRef.current.on("updateUsers", (userList) => {
+      setActiveUsers(userList.map((user) => user.userId));
     });
 
-    socketRef.current.on("receivePrivateMessage", (newMessage) => {
-      setMessages((prevMessages) => [...prevMessages, newMessage]);
+    socketRef.current.on("userOnline", (userId) => {
+      setActiveUsers((prev) => [...prev, userId]);
     });
 
-    socketRef.current.on("userTyping", (userId) => {
-      if (selectedUser?._id === userId) {
-        setTyping(true);
-        setTimeout(() => setTyping(false), 2000);
+    socketRef.current.on("userOffline", (userId) => {
+      setActiveUsers((prev) => prev.filter((id) => id !== userId));
+    });
+
+    socketRef.current.on("receiveMessage", (message) => {
+      if (
+        (message.senderId === selectedUser?._id &&
+          message.receiverId === currentUser._id) ||
+        (message.senderId === currentUser._id &&
+          message.receiverId === selectedUser?._id)
+      ) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            ...message,
+            sender: {
+              _id: message.senderId,
+              name: message.senderUsername,
+              image: message.senderImage,
+            },
+            receiver: {
+              _id: message.receiverId,
+            },
+          },
+        ]);
       }
     });
 
     return () => {
-      socketRef.current.disconnect();
+      if (socketRef.current) socketRef.current.disconnect();
     };
-  }, [loggedInUser, selectedUser]);
+  }, [currentUser, selectedUser]);
 
-  // Fetch chat messages between logged-in user & selected user
+  // Fetch messages when user is selected
   useEffect(() => {
-    if (!selectedUser || !loggedInUser) return;
-
-    console.log("Fetching messages for:", loggedInUser._id, selectedUser._id);
+    if (!selectedUser || !currentUser) return;
 
     const fetchMessages = async () => {
       try {
         const token = localStorage.getItem("token");
         const response = await axios.get(
-          `${API_URL}/api/messages/${loggedInUser._id}/${selectedUser._id}`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
+          `${API_URL}/api/messages/${currentUser._id}/${selectedUser._id}`,
+          { headers: { Authorization: `Bearer ${token}` } }
         );
-
-        if (response.status === 200) {
-          setMessages(response.data);
-        } else {
-          setMessages([]);
-        }
+        setMessages(response.data);
       } catch (error) {
-        console.error("❌ Error fetching messages:", error.response || error);
-        setMessages([]);
+        console.error("Error fetching messages:", error);
       }
     };
-
     fetchMessages();
-  }, [selectedUser, loggedInUser]);
+  }, [selectedUser, currentUser]);
 
-  // Auto-scroll to latest message
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  const sendMessage = async (e) => {
+    e.preventDefault();
+    if (isSending || !messageInput.trim() || !selectedUser || !currentUser)
+      return;
 
-  // Send message
-  const handleSendMessage = async () => {
-    if (!message.trim() || !selectedUser?._id || !loggedInUser?._id) return;
+    setIsSending(true);
 
-    const newMessage = {
-      senderId: loggedInUser._id,
-      recipientId: selectedUser._id,
-      text: message,
-      timestamp: new Date().toISOString(),
+    const messageData = {
+      receiverId: selectedUser._id,
+      senderId: currentUser._id,
+      text: messageInput,
     };
 
-    setMessages([...messages, newMessage]);
+    // Emit message to the server
+    socketRef.current.emit("sendMessage", messageData);
 
-    try {
-      await axios.post(`${API_URL}/api/messages/send`, newMessage, {
-        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-      });
+    // Add the message to the chat
+    setMessages((prev) => [
+      ...prev,
+      {
+        text: messageInput,
+        sender: {
+          _id: currentUser._id,
+          name: currentUser.name,
+          image: currentUser.image,
+        },
+        receiver: {
+          _id: selectedUser._id,
+        },
+        timestamp: new Date().toISOString(),
+        status: "sent",
+      },
+    ]);
 
-      socketRef.current?.emit("sendPrivateMessage", newMessage);
-    } catch (error) {
-      console.error("❌ Error sending message:", error);
-    }
-
-    setMessage("");
+    setMessageInput("");
+    setIsSending(false);
   };
 
-  // Handle typing
-  const handleTyping = () => {
-    socketRef.current?.emit("typing", selectedUser?._id);
+  const formatTime = (timestamp) => {
+    return new Date(timestamp).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
   };
 
   return (
-    <div className="chat-container">
-      <aside className="sidebar">
-        <h3>Chats</h3>
-        <ul>
-          {users
-            .filter((user) => user._id !== loggedInUser?._id)
-            .map((user) => (
-              <li
-                key={user._id}
-                className={`user ${
-                  selectedUser?._id === user._id ? "active" : ""
-                }`}
-                onClick={() => setSelectedUser(user)}
-              >
-                <div
-                  className="status-dot"
-                  style={{
-                    background: onlineUsers[user._id] ? "green" : "gray",
-                  }}
-                ></div>
-                <img src={user.image} alt={user.name} className="avatar" />
-                <span>{user.name}</span>
-              </li>
-            ))}
-        </ul>
-      </aside>
+    <div className="whatsapp-container">
+      {/* Sidebar */}
+      <div className="sidebar">
+        {/* User header */}
+        <div className="sidebar-header">
+          <div className="user-avatar1">
+            <img src={currentUser?.image} alt={currentUser?.name} />
+          </div>
+          <div className="sidebar-actions">
+            <button>
+              <FiMoreVertical />
+            </button>
+          </div>
+        </div>
 
-      <div className="chat-window">
+        {/* Search */}
+        <div className="search-container">
+          <div className="search-input">
+            <FiSearch className="search-icon" />
+            <input type="text" placeholder="Search or start new chat" />
+          </div>
+        </div>
+
+        {/* Chats list */}
+        <div className="chats-list">
+          {users.map((user) => (
+            <div
+              key={user._id}
+              className={`chat-item ${
+                selectedUser?._id === user._id ? "active" : ""
+              }`}
+              onClick={() => setSelectedUser(user)}
+            >
+              <div className="chat-avatar">
+                <img src={user.image} alt={user.name} />
+                <div
+                  className={`status-dot ${
+                    activeUsers.includes(user._id) ? "online" : "offline"
+                  }`}
+                />
+              </div>
+              <div className="chat-info">
+                <div className="chat-name">{user.name}</div>
+                <div className="chat-preview">Last message preview...</div>
+              </div>
+              <div className="chat-meta">
+                <div className="chat-time">10:30 AM</div>
+                <div className="unread-count">2</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Chat area */}
+      <div className="chat-area">
         {selectedUser ? (
           <>
-            <header className="chat-header">
-              <div
-                className="status-dot"
-                style={{
-                  background: onlineUsers[selectedUser._id] ? "green" : "gray",
-                }}
-              ></div>
-              <img
-                src={selectedUser.image}
-                alt={selectedUser.name}
-                className="avatar"
-              />
-              <h3>{selectedUser.name}</h3>
-            </header>
-
-            <div className="messages">
-              {messages.map((msg, index) => (
-                <div
-                  key={index}
-                  className={`message ${
-                    msg.senderId === loggedInUser?._id ? "sent" : "received"
-                  }`}
-                >
-                  <p>{msg.text}</p>
+            {/* Chat header */}
+            <div className="chat-header">
+              <div className="chat-header-info">
+                <div className="chat-avatar">
+                  <img src={selectedUser.image} alt={selectedUser.name} />
+                  <div
+                    className={`status-dot ${
+                      activeUsers.includes(selectedUser._id)
+                        ? "online"
+                        : "offline"
+                    }`}
+                  />
                 </div>
-              ))}
-              {typing && <div className="typing-indicator">Typing...</div>}
+                <div className="chat-title">
+                  <div className="chat-name">{selectedUser.name}</div>
+                  <div className="chat-status">
+                    {activeUsers.includes(selectedUser._id)
+                      ? "Online"
+                      : "Last seen today at 12:45 PM"}
+                  </div>
+                </div>
+              </div>
+              <div className="chat-actions">
+                <button>
+                  <FiSearch />
+                </button>
+                <button>
+                  <BsThreeDotsVertical />
+                </button>
+              </div>
+            </div>
+
+            {/* Messages container */}
+            <div className="messages-container">
+              {messages.length === 0 ? (
+                <div className="no-messages">
+                  <p>No messages yet</p>
+                  <p>Start a conversation with {selectedUser.name}</p>
+                </div>
+              ) : (
+                messages.map((msg, index) => (
+                  <div
+                    key={index}
+                    className={`message ${
+                      msg.sender._id === currentUser?._id ? "sent" : "received"
+                    }`}
+                  >
+                    <div className="message-content">
+                      {msg.sender._id !== currentUser?._id && (
+                        <img
+                          src={msg.sender.image || selectedUser.image}
+                          alt={msg.sender.name}
+                          className="message-avatar"
+                        />
+                      )}
+                      <div className="message-bubble">
+                        <div className="message-text">{msg.text}</div>
+                        <div className="message-meta">
+                          <span className="message-time">
+                            {formatTime(msg.timestamp)}
+                          </span>
+                          {msg.sender._id === currentUser?._id && (
+                            <span className="message-status">
+                              <BsCheck2All
+                                className={msg.status === "read" ? "read" : ""}
+                              />
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
               <div ref={messagesEndRef} />
             </div>
 
-            <footer className="chat-input">
-              <input
-                type="text"
-                placeholder="Type a message..."
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                onKeyPress={(e) => {
-                  handleTyping();
-                  if (e.key === "Enter") handleSendMessage();
-                }}
-              />
-              <button onClick={handleSendMessage}>Send</button>
-            </footer>
+            {/* Message input */}
+            <div className="message-input">
+              <form onSubmit={sendMessage}>
+                <div className="input-actions">
+                  <button>
+                    <FiPaperclip />
+                  </button>
+                  <button>
+                    <FiSmile />
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  placeholder="Type a message"
+                  value={messageInput}
+                  onChange={(e) => setMessageInput(e.target.value)}
+                />
+                <div className="send-button">
+                  <button type="submit" disabled={isSending}>
+                    {isSending ? "Sending..." : <FiMic />}
+                  </button>
+                </div>
+              </form>
+            </div>
           </>
         ) : (
-          <div className="select-user">Select a user to start chatting</div>
+          <div className="no-chat-selected">
+            <p>Select a chat to start messaging</p>
+          </div>
         )}
       </div>
     </div>
