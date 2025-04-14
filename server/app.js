@@ -26,19 +26,16 @@ const server = http.createServer(app);
 
 // CORS Configuration
 const allowedOrigins = [
-  "http://localhost:3000", // Local development
-  "https://your-frontend-domain.com", // Production frontend
+  "http://localhost:3000",
+  "https://your-frontend-domain.com", // if deployed
 ];
 
 app.use(
   cors({
     origin: function (origin, callback) {
-      console.log("🔍 Incoming request from:", origin);
-
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
-        console.log("❌ CORS blocked for:", origin);
         callback(new Error("Not allowed by CORS"));
       }
     },
